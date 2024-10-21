@@ -1,0 +1,129 @@
+// This Pine Script™ code is subject to the terms of the Mozilla Public License 2.0 at https://mozilla.org/MPL/2.0/
+// © shubhamtaywade82
+
+//@version=5
+indicator("Comprehensive Multi-Strategy Trading System", overlay=true, max_lines_count=500)
+import TradingView/ta/8
+
+// ===== Input Parameters =====
+// MA Crossover Inputs
+useMA = input.bool(true, title="Use MA Crossover")
+shortMA = input.int(9, title="Short MA Period")
+longMA = input.int(21, title="Long MA Period")
+maType = input.string("EMA", title="MA Type", options=["SMA", "EMA"])
+
+// MACD + RSI Inputs
+useMACD = input.bool(true, title="Use MACD + RSI Confirmation")
+macdFast = input.int(12, title="MACD Fast Length")
+macdSlow = input.int(26, title="MACD Slow Length")
+macdSignal = input.int(9, title="MACD Signal Length")
+rsiPeriod = input.int(14, title="RSI Period")
+
+// Bollinger Bands + Stochastic Inputs
+useBB = input.bool(true, title="Use Bollinger Bands + Stochastic")
+bbLength = input.int(20, title="BB Length")
+bbMult = input.float(2.0, title="BB Multiplier")
+stochK = input.int(14, title="Stochastic %K Period")
+stochD = input.int(3, title="Stochastic %D Period")
+
+// Ichimoku Cloud Inputs
+useIchimoku = input.bool(false, title="Use Ichimoku Cloud")
+conLength = input.int(9, title="Conversion Line Length")
+baseLength = input.int(26, title="Base Line Length")
+senkouLength = input.int(52, title="Leading Span B Length")
+
+// Parabolic SAR Inputs
+usePSAR = input.bool(true, title="Use Parabolic SAR")
+psarStep = input.float(0.02, title="PSAR Step", step=0.01)
+psarMax = input.float(0.2, title="PSAR Max", step=0.01)
+sarStart = input.float(0.02, title="SAR Start", step=0.01)
+sarInc = input.float(0.02, title="SAR Increment", step=0.01)
+sarMax = input.float(0.2, title="SAR Max", step=0.05)
+
+// ATR Inputs
+useATR = input.bool(true, title="Use ATR for Volatility-Based Stops")
+atrLength = input.int(14, title="ATR Length")
+
+
+// ===== Indicator Calculations =====
+// Moving Averages
+ma1 = maType == "EMA" ? ta.ema(close, shortMA) : ta.sma(close, shortMA)
+ma2 = maType == "EMA" ? ta.ema(close, longMA) : ta.sma(close, longMA)
+
+// MACD + RSI
+[macdLine, signalLine, _] = ta.macd(close, macdFast, macdSlow, macdSignal)
+rsiValue = ta.rsi(close, rsiPeriod)
+
+// Bollinger Bands + Stochastic
+[bbUpper, bbMiddle, bbLower] = ta.bb(close, bbLength, bbMult)
+kValue = ta.stoch(close, high, low, stochK)
+dValue = ta.sma(kValue, stochD)
+
+
+// Ichimoku Cloud Calculation
+[tenkan, kijun, senkou1, senkou2, chikou] = ta.ichimoku(conLength, baseLength, senkouLength)
+
+// Parabolic SAR
+psarValue = ta.sar(sarStart, sarInc, sarMax)
+
+// ATR
+atrValue = ta.atr(atrLength)
+
+// ===== Strategy Conditions =====
+// MA Crossover
+maLongEntry = ta.crossover(ma1, ma2)
+maShortEntry = ta.crossunder(ma1, ma2)
+
+// MACD + RSI Confirmation
+macdBuy = ta.crossover(macdLine, signalLine) and rsiValue < 40
+macdSell = ta.crossunder(macdLine, signalLine) and rsiValue > 60
+
+// Bollinger + Stochastic Conditions
+bbBuy = close < bbLower and kValue < 20 and dValue < 20
+bbSell = close > bbUpper and kValue > 80 and dValue > 80
+
+// Ichimoku Cloud Conditions
+ichimokuLong = tenkan > kijun and close > senkou1 and close > senkou2
+ichimokuShort = tenkan < kijun and close < senkou1 and close < senkou2
+
+// Parabolic SAR Trend Reversal
+psarLong = close > psarValue
+psarShort = close < psarValue
+
+// ===== Entry and Exit Logic =====
+longCondition = (useMA and maLongEntry) or (useMACD and macdBuy) or (useBB and bbBuy) or (useIchimoku and ichimokuLong) or (usePSAR and psarLong)
+shortCondition = (useMA and maShortEntry) or (useMACD and macdSell) or (useBB and bbSell) or (useIchimoku and ichimokuShort) or (usePSAR and psarShort)
+
+// ===== Plotting Signals on Chart =====
+plotshape(series=longCondition, title="Buy Signal", location=location.belowbar, 
+          color=color.green, style=shape.arrowup, text="BUY", size=size.auto, textcolor=color.white)
+
+plotshape(series=shortCondition, title="Sell Signal", location=location.abovebar, 
+          color=color.red, style=shape.labeldown, text="SELL", size=size.auto,textcolor=color.white)
+
+// Plot MA Lines
+plot(ma1, title="Short MA", color=color.blue, linewidth=1)
+plot(ma2, title="Long MA", color=color.red, linewidth=1)
+
+// Bollinger Bands Plot
+plot(bbUpper, title="BB Upper", color=color.purple, linewidth=1)
+plot(bbLower, title="BB Lower", color=color.purple, linewidth=1)
+
+// Ichimoku Cloud Plot (Offset for future cloud)
+plot(senkou1, title="Senkou Span A", color=color.green, linewidth=1, offset=26, display = useIchimoku ? display.all : display.none)
+plot(senkou2, title="Senkou Span B", color=color.red, linewidth=1, offset=26, display = useIchimoku ? display.all : display.none)
+
+// Parabolic SAR Plot
+plot(psarValue, title="Parabolic SAR", color=color.orange, style=plot.style_cross, linewidth=2)
+
+// ===== Background Highlight Logic =====
+bgColorBull = color.new(color.green, 90)  // Transparent green for bullish condition
+bgColorBear = color.new(color.red, 90)    // Transparent red for bearish condition
+
+// Apply background colors based on conditions
+bgcolor(longCondition ? bgColorBull : na, title="Bullish Background")
+bgcolor(shortCondition ? bgColorBear : na, title="Bearish Background")
+
+// Alerts for Entry and Exit
+alertcondition(longCondition, title="Buy Entry Alert", message="Buy Signal Triggered")
+alertcondition(shortCondition, title="Sell Entry Alert", message="Sell Signal Triggered")
